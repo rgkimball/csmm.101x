@@ -11,6 +11,7 @@ import math
 import time
 import psutil
 from collections import deque
+from random import shuffle
 from multiprocessing import Queue
 
 
@@ -111,6 +112,18 @@ class PuzzleState(object):
 
         return self.children
 
+    def __eq__(self, other):
+        if isinstance(other, PuzzleState):
+            return str(self.config) == str(other.config)
+        else:
+            raise ValueError('The equivalence of incompatible types is ambiguous.')
+
+    def __hash__(self):
+        return hash(str(self.config))
+
+    def __repr__(self):
+        return str(self.config)
+
 
 PROCESS = psutil.Process(os.getpid())
 MEM_USAGE = {}
@@ -158,8 +171,9 @@ def write_output(
     with open(fnam, 'w') as fo:
         fo.write(contents)
     print(contents)
-
     print(f'Output file saved to {fnam}')
+
+    return output
 
 
 def bfs_search(initial_state: PuzzleState):
@@ -170,24 +184,25 @@ def bfs_search(initial_state: PuzzleState):
     :return: N/A
     """
     frontier, explored = deque(), set()
-    frontier.extend(initial_state.expand())
-    explored.add(initial_state.config)
-    max_depth = 0
+    frontier.append(initial_state)
+    explored.add(initial_state)
+    max_depth, expanded = 0, 0
 
     while frontier:
         record_usage()
         state = frontier.popleft()
-        max_depth = max(max_depth, state.cost + 1)
 
         if test_goal(state):
-            return write_output('bfs', state, max_depth, len(explored))
+            return write_output('dfs', state, max_depth, expanded)
 
+        expanded += 1
         for node in state.expand():
-            if node.config not in explored:
-                explored.add(state.config)
+            if node not in explored:
+                explored.add(node)
                 frontier.append(node)
+                max_depth = max(max_depth, node.cost)
 
-    print('No solution found.')
+    print(f'No solution found after {len(explored)} expansions.', initial_state.config)
 
 
 def dfs_search(initial_state: PuzzleState):
@@ -197,9 +212,26 @@ def dfs_search(initial_state: PuzzleState):
     :param initial_state:
     :return:
     """
+    frontier, explored = deque(), set()
+    frontier.append(initial_state)
+    explored.add(initial_state)
+    max_depth, expanded = 0, 0
 
-    ### STUDENT CODE GOES HERE ###
-    pass
+    while frontier:
+        record_usage()
+        state = frontier.pop()
+
+        if test_goal(state):
+            return write_output('dfs', state, max_depth, expanded)
+
+        expanded += 1
+        for node in reversed(state.expand()):
+            if node not in explored:
+                explored.add(node)
+                frontier.append(node)
+                max_depth = max(max_depth, node.cost)
+
+    print(f'No solution found after {len(explored)} expansions.', initial_state.config)
 
 
 def a_star_search(initial_state: PuzzleState):
@@ -278,5 +310,26 @@ def main():
         raise ValueError("Enter a valid code! Algorithm should be one of {}".format(', '.join(algos.keys())))
 
 
+def test_bfs(size, iterations):
+    import pandas as pd
+    global MEM_USAGE
+    grid = list(range(size ** 2))
+    all_stats = []
+
+    for i in range(iterations):
+        shuffle(grid)
+        this = PuzzleState(tuple(grid), size)
+        result = bfs_search(this)
+        if result is not None:
+            result['grid'] = ','.join([str(i) for i in grid])
+            result['path_to_goal'] = ''.join(s[0] for s in result['path_to_goal'])
+            all_stats.append(result)
+        MEM_USAGE = {}
+
+    df = pd.DataFrame.from_records(all_stats)
+    df.to_csv('bfs_stats.csv', header=False)
+
+
 if __name__ == '__main__':
     main()
+    # test_bfs(4, 300)
