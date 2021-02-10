@@ -5,13 +5,10 @@ Submission for Project 1 of Columbia University's AI EdX course (8-puzzle).
     date: 2/9/2021
 """
 
-import os
 import sys
 import math
 import time
-import psutil
 from collections import deque
-from random import shuffle
 from multiprocessing import Queue
 
 
@@ -125,18 +122,17 @@ class PuzzleState(object):
         return str(self.config)
 
 
-PROCESS = psutil.Process(os.getpid())
 MEM_USAGE = {}
 
 
-def record_usage():
+def record_usage(*args):
     """
     Create a timestamped snapshot of the current process' RAM usage.
 
     :return: None, result appended to MEM_USAGE global
     """
     global MEM_USAGE
-    MEM_USAGE[time.time()] = PROCESS.memory_info().rss
+    MEM_USAGE[time.time()] = sum(map(sys.getsizeof, args))
 
 
 def write_output(
@@ -163,7 +159,7 @@ def write_output(
         'search_depth': state.cost,
         'max_search_depth': max_depth,
         'running_time': max(MEM_USAGE.keys()) - min(MEM_USAGE.keys()),
-        'max_ram_usage': round(max(MEM_USAGE.values()) * (1024 * 10 ** -10), 2),
+        'max_ram_usage': max(MEM_USAGE.values()) * (1024 * 10 ** -10),
     }
 
     fnam = f'{algo}_output.txt'
@@ -189,11 +185,11 @@ def bfs_search(initial_state: PuzzleState):
     max_depth, expanded = 0, 0
 
     while frontier:
-        record_usage()
         state = frontier.popleft()
+        record_usage(frontier, explored, state)
 
         if test_goal(state):
-            return write_output('dfs', state, max_depth, expanded)
+            return write_output('bfs', state, max_depth, expanded)
 
         expanded += 1
         for node in state.expand():
@@ -218,8 +214,8 @@ def dfs_search(initial_state: PuzzleState):
     max_depth, expanded = 0, 0
 
     while frontier:
-        record_usage()
         state = frontier.pop()
+        record_usage(frontier, explored, state)
 
         if test_goal(state):
             return write_output('dfs', state, max_depth, expanded)
@@ -241,9 +237,8 @@ def a_star_search(initial_state: PuzzleState):
     :param initial_state:
     :return:
     """
-
-    ### STUDENT CODE GOES HERE ###
-    pass
+    # STUDENT CODE GOES HERE ###
+    return initial_state
 
 
 def calculate_total_cost(state: PuzzleState):
@@ -253,8 +248,8 @@ def calculate_total_cost(state: PuzzleState):
     :param state:
     :return:
     """
-    ### STUDENT CODE GOES HERE ###
-    pass
+    # STUDENT CODE GOES HERE ###
+    return state
 
 
 def calculate_manhattan_dist(idx, value, n):
@@ -266,8 +261,8 @@ def calculate_manhattan_dist(idx, value, n):
     :param n:
     :return:
     """
-    ### STUDENT CODE GOES HERE ###
-    pass
+    # STUDENT CODE GOES HERE ###
+    return idx, value, n
 
 
 def test_goal(puzzle_state: PuzzleState):
@@ -310,26 +305,39 @@ def main():
         raise ValueError("Enter a valid code! Algorithm should be one of {}".format(', '.join(algos.keys())))
 
 
-def test_bfs(size, iterations):
+def test_algos(file_name):
     import pandas as pd
     global MEM_USAGE
-    grid = list(range(size ** 2))
     all_stats = []
-
-    for i in range(iterations):
-        shuffle(grid)
-        this = PuzzleState(tuple(grid), size)
-        result = bfs_search(this)
-        if result is not None:
-            result['grid'] = ','.join([str(i) for i in grid])
-            result['path_to_goal'] = ''.join(s[0] for s in result['path_to_goal'])
-            all_stats.append(result)
+    with open(file_name, 'r') as f:
+        grids = [tuple(map(int, x.replace('\n', '').split(','))) for x in f.readlines()]
+    for i, grid in enumerate(grids):
+        print(i, grid)
+        # Initialize grid
+        this = PuzzleState(tuple(grid), int(math.sqrt(len(grid))))
+        combined = {'i': i, 'grid': ','.join([str(i) for i in grid])}
+        # Run BFS Algo
+        bfs = bfs_search(this)
+        if bfs is not None:
+            bfs['path_to_goal'] = ''.join(s[0] for s in bfs['path_to_goal'])
+            bfs = {f'bfs_{k}': v for k, v in bfs.items()}
+            combined.update(bfs)
         MEM_USAGE = {}
+        # Run DFS Algo
+        dfs = dfs_search(this)
+        if dfs is not None:
+            del dfs['path_to_goal']
+            dfs = {f'dfs_{k}': v for k, v in dfs.items()}
+            combined.update(dfs)
+        MEM_USAGE = {}
+        all_stats.append(combined)
+        if i > 1:
+            break
 
-    df = pd.DataFrame.from_records(all_stats)
-    df.to_csv('bfs_stats.csv', header=False)
+    df = pd.DataFrame. from_records(all_stats)
+    df.to_csv('all_stats.csv', index=False, mode='a', header=False)
 
 
 if __name__ == '__main__':
-    main()
-    # test_bfs(4, 300)
+    # main()
+    test_algos('solvable_grids.txt')
