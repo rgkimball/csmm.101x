@@ -8,8 +8,8 @@ Submission for Project 1 of Columbia University's AI EdX course (8-puzzle).
 import sys
 import math
 import time
+import heapq
 from collections import deque
-from multiprocessing import Queue
 
 
 class PuzzleState(object):
@@ -115,6 +115,30 @@ class PuzzleState(object):
         else:
             raise ValueError('The equivalence of incompatible types is ambiguous.')
 
+    def __ge__(self, other):
+        if isinstance(other, PuzzleState):
+            return calculate_total_cost(self) >= calculate_total_cost(other)
+        else:
+            raise ValueError('The comparison of incompatible types is ambiguous.')
+
+    def __gt__(self, other):
+        if isinstance(other, PuzzleState):
+            return calculate_total_cost(self) > calculate_total_cost(other)
+        else:
+            raise ValueError('The comparison of incompatible types is ambiguous.')
+
+    def __le__(self, other):
+        if isinstance(other, PuzzleState):
+            return calculate_total_cost(self) <= calculate_total_cost(other)
+        else:
+            raise ValueError('The comparison of incompatible types is ambiguous.')
+
+    def __lt__(self, other):
+        if isinstance(other, PuzzleState):
+            return calculate_total_cost(self) < calculate_total_cost(other)
+        else:
+            raise ValueError('The comparison of incompatible types is ambiguous.')
+
     def __hash__(self):
         return hash(str(self.config))
 
@@ -159,7 +183,7 @@ def write_output(
         'search_depth': state.cost,
         'max_search_depth': max_depth,
         'running_time': max(MEM_USAGE.keys()) - min(MEM_USAGE.keys()),
-        'max_ram_usage': max(MEM_USAGE.values()) * (1024 * 10 ** -10),
+        'max_ram_usage': max(MEM_USAGE.values()) / (1024 ** 2),
     }
 
     fnam = f'{algo}_output.txt'
@@ -232,12 +256,34 @@ def dfs_search(initial_state: PuzzleState):
 
 def a_star_search(initial_state: PuzzleState):
     """
-    A * search
+    Implements A* search
 
     :param initial_state:
     :return:
     """
-    # STUDENT CODE GOES HERE ###
+    frontier, explored = list(), set()
+    heapq.heappush(frontier, initial_state)
+    explored.add(initial_state)
+    max_depth, expanded = 0, 0
+
+    while frontier:
+        state = heapq.heappop(frontier)
+        record_usage(frontier, explored, state)
+
+        if test_goal(state):
+            return write_output('ast', state, max_depth, expanded)
+
+        expanded += 1
+        for node in state.expand():
+            if node not in explored:
+                explored.add(node)
+                heapq.heappush(frontier, node)
+                max_depth = max(max_depth, node.cost)
+            elif node in frontier:
+                frontier.remove(node)
+                heapq.heappush(frontier, node)
+                heapq.heapify(frontier)
+
     return initial_state
 
 
@@ -245,24 +291,29 @@ def calculate_total_cost(state: PuzzleState):
     """
     Calculate the total estimated cost of a state
 
-    :param state:
-    :return:
+    :param state: PuzzleState object
+    :return: total cost of the state
     """
-    # STUDENT CODE GOES HERE ###
-    return state
+    # Heuristic function, sum of Manhattan distance of tiles
+    h = sum(calculate_manhattan_dist(i, v, state.dimension) for i, v in enumerate(state.config))
+    # Path cost function, number of misplaced tiles
+    g = sum(map(lambda x: int(x[0] != x[1]), zip(state.config, range(9)))) - 1
+    return h + g
 
 
 def calculate_manhattan_dist(idx, value, n):
     """
     Calculate the manhattan distance of a tile
+    :the Manhattan distance of tile `value` from index `idx` in a `n` x `n` board.
 
-    :param idx:
-    :param value:
-    :param n:
-    :return:
+    :param idx: int, the current location of the tile
+    :param value: int, the value of this tile
+    :param n: int, the dimensions of the board
+    :return: int, Manhattan distance
     """
-    # STUDENT CODE GOES HERE ###
-    return idx, value, n
+    if value == 0:
+        return 1
+    return abs(value // n - idx // n) + abs(value % n - idx % n)
 
 
 def test_goal(puzzle_state: PuzzleState):
@@ -339,5 +390,5 @@ def test_algos(file_name):
 
 
 if __name__ == '__main__':
-    # main()
-    test_algos('solvable_grids.txt')
+    main()
+    # test_algos('solvable_grids.txt')
