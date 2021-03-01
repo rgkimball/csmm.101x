@@ -14,6 +14,7 @@ from collections import deque
 
 class PuzzleState(object):
     """The Class that Represents the Puzzle"""
+    action_hierarchy = ('Up', 'Down', 'Left', 'Right')
 
     def __init__(self, config, n, parent=None, action="Initial", cost=0):
 
@@ -23,6 +24,9 @@ class PuzzleState(object):
         self.n = n
         self.cost = cost
         self.parent = parent
+        self.depth = 0
+        if parent:
+            self.depth = parent.depth + 1
         self.action = action
         self.dimension = n
         self.config = config
@@ -115,27 +119,20 @@ class PuzzleState(object):
         else:
             raise ValueError('The equivalence of incompatible types is ambiguous.')
 
-    def __ge__(self, other):
-        if isinstance(other, PuzzleState):
-            return calculate_total_cost(self) >= calculate_total_cost(other)
-        else:
-            raise ValueError('The comparison of incompatible types is ambiguous.')
-
-    def __gt__(self, other):
-        if isinstance(other, PuzzleState):
-            return calculate_total_cost(self) > calculate_total_cost(other)
-        else:
-            raise ValueError('The comparison of incompatible types is ambiguous.')
-
-    def __le__(self, other):
-        if isinstance(other, PuzzleState):
-            return calculate_total_cost(self) <= calculate_total_cost(other)
-        else:
-            raise ValueError('The comparison of incompatible types is ambiguous.')
-
     def __lt__(self, other):
         if isinstance(other, PuzzleState):
-            return calculate_total_cost(self) < calculate_total_cost(other)
+            l, r = map(calculate_total_cost, [self, other])
+            if l < r:
+                return True
+            elif l == r:
+                la, ra = map(self.action_hierarchy.index, [self.action, other.action])
+                if la < ra:
+                    return True
+                elif la == ra:
+                    return self.depth > other.depth
+                return False
+            else:
+                return False
         else:
             raise ValueError('The comparison of incompatible types is ambiguous.')
 
@@ -294,11 +291,8 @@ def calculate_total_cost(state: PuzzleState):
     :param state: PuzzleState object
     :return: total cost of the state
     """
-    # Heuristic function, sum of Manhattan distance of tiles
-    h = sum(calculate_manhattan_dist(i, v, state.dimension) for i, v in enumerate(state.config))
-    # Path cost function, number of misplaced tiles
-    g = sum(map(lambda x: int(x[0] != x[1]), zip(state.config, range(9)))) - 1
-    return h + g
+    x = sum(calculate_manhattan_dist(i, v, state.dimension) for i, v in enumerate(state.config))
+    return x
 
 
 def calculate_manhattan_dist(idx, value, n):
@@ -312,7 +306,7 @@ def calculate_manhattan_dist(idx, value, n):
     :return: int, Manhattan distance
     """
     if value == 0:
-        return 1
+        return 0
     return abs(value // n - idx // n) + abs(value % n - idx % n)
 
 
@@ -382,11 +376,9 @@ def test_algos(file_name):
             combined.update(dfs)
         MEM_USAGE = {}
         all_stats.append(combined)
-        if i > 1:
-            break
 
     df = pd.DataFrame. from_records(all_stats)
-    df.to_csv('all_stats.csv', index=False, mode='a', header=False)
+    df.to_csv('all_stats.csv', index=False)
 
 
 if __name__ == '__main__':
