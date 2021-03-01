@@ -1,6 +1,7 @@
 from random import randint
 from BaseAI import BaseAI
 
+
 class ComputerAI(BaseAI):
     def getMove(self, grid):
         cells = grid.getAvailableCells()

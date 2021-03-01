@@ -3,6 +3,7 @@ from copy import deepcopy
 directionVectors = (UP_VEC, DOWN_VEC, LEFT_VEC, RIGHT_VEC) = ((-1, 0), (1, 0), (0, -1), (0, 1))
 vecIndex = [UP, DOWN, LEFT, RIGHT] = range(4)
 
+
 class Grid:
     def __init__(self, size = 4):
         self.size = size
@@ -177,6 +178,7 @@ class Grid:
             return self.map[pos[0]][pos[1]]
         else:
             return None
+
 
 if __name__ == '__main__':
     g = Grid()
