@@ -4,20 +4,21 @@ Submission for Project 2 of Columbia University's AI EdX course (Adversarial Sea
     author: @rgkimball
     date: 2/28/2021
 """
-from time import time_ns
+from time import time
 from BaseAI import BaseAI
 
 
-def _monotonic(grid_map):
+def _monotonic(grid_map, p=1.5):
     """
-    We prefer monotonically increasing rows, and we magnify this preference as our max tile increases.
-    Using sqrt to taper this penalty as the game progresses.
+    Reward monotonic rows & columns, increasing exponentially with the rank.
 
     :param grid_map: list of rows, which are lists of tile values
     :return: int
     """
-    sq_max = max(i for row in grid_map for i in row) ** 0.5
-    return  int(all(i <= j for i, j in zip(grid_map, grid_map[1:]))) * sq_max
+    horizontal = [i ** p - j ** p if i > j else j ** p - i ** p for r in grid_map for i, j in zip(r, r[1:])]
+    transpose = [[grid_map[i][j] for i in range(4)] for j in range(4)]
+    vertical = [i ** p - j ** p if i > j else j ** p - i ** p for r in transpose for i, j in zip(r, r[1:])]
+    return sum(horizontal) + sum(vertical)
 
 
 def _open_spaces(grid_map):
@@ -27,7 +28,7 @@ def _open_spaces(grid_map):
     :param grid_map: list of rows, which are lists of tile values
     :return: int
     """
-    return sum(1 if i == 0 else 0 for i in grid_map)
+    return sum(1 if i == 0 else 0 for row in grid_map for i in row)
 
 
 def _edge_score(grid_map):
@@ -47,20 +48,33 @@ def _edge_score(grid_map):
 
 def _potential_merges(grid_map):
     """
-    Returns the number of horizontally and vertically adjacent tiles of equal value; i.e. the potential 1-turn merges.
+    Returns the sum of horizontally and vertically adjacent tiles of equal value; i.e. the potential 1-turn merges.
+    Use of the sum encourages high-value combinations.
 
     :param grid_map: list of rows, which are lists of tile values
     :return: int
     """
     rows = sum(1 if i > 0 and i == j else 0 for row in grid_map for i, j in zip(row, row[1:]))
     colpairs = zip(grid_map, grid_map[1:])
-    columns = sum(1 if c1[i] > 0 and c1[i] == c2[i] else 0 for c1, c2 in colpairs for i, _ in enumerate(c1))
+    columns = sum(c1[i] ** 2 if c1[i] == c2[i] else 0 for c1, c2 in colpairs for i, _ in enumerate(c1))
     return rows + columns
+
+
+def _sum_power(grid_map, power=3.5):
+    """
+    Robert Xiao's sum power heuristic to measure raw board value.
+
+    :param grid_map:
+    :param power:
+    :return:
+    """
+    return sum([i ** power for row in grid_map for i in row])
+    # return sum([float(''.join(row)) ** power for row in grid_map])
 
 
 def heuristic(grid_map):
     """
-    Naively sums the underlying heuristic function scores, without respect for their distributions.
+    Combination of the underlying heuristic function scores.
 
     :param grid_map: list of rows, which are lists of tile values
     :return: int, final heuristic score
@@ -68,72 +82,122 @@ def heuristic(grid_map):
 
     im = _monotonic(grid_map)
     os = _open_spaces(grid_map)
-    es = _edge_score(grid_map)
+    sp = _sum_power(grid_map)
     pm = _potential_merges(grid_map)
-    return im + os + es + pm
+
+    # Weights
+    im **= 0.5
+    sp **= 0.5
+    os *= 2000
+    pm *= 1000
+
+    # print('Heuristic score (os+pm-im-sp): ', os, pm, im, sp, os + pm - im - sp)
+    return os + pm - im - sp
 
 
-def get_children(grid):
+def get_children(grid, turn='player'):
     """
     Only return viable nodes if their state differs from the initial.
 
+    :param turn: string, either player or pc - determines how child nodes are expanded from the current grid state.
     :param grid: Grid
     :return: list(Grid, ...)
     """
-    nodes = {}
-    for move in grid.getAvailableMoves():
-        new = grid.clone()
-        new.move(move)
-        if grid.map != new.map:
-            nodes[move] = new
+    nodes = []
+    if turn == 'player':
+        moves = grid.getAvailableMoves()
+        moves = sorted(moves, key=lambda x: PlayerAI.order_preference.index(x))
+        for move in moves:
+            new = grid.clone()
+            new.move(move)
+            if grid.map != new.map:
+                nodes.append((move, new))
+    elif turn == 'pc':
+        spaces = grid.getAvailableCells()
+        for value in (2, ):
+            for space in spaces:
+                this = grid.clone()
+                this.setCellValue(space, value)
+                nodes.append((space, this))
+
     return nodes
 
 
 class PlayerAI(BaseAI):
 
-    max_search_depth = 5
-    time_limit = 0.15  # seconds
+    max_search_depth = 15
+    depth_searched = 0
+    time_limit = 0.19  # seconds
+    prob_2 = 0.9  # % chance that a new tile is a 2, instead of a 4
+    order_preference = (0, 2, 1, 3)
 
     def getMove(self, grid):
-        self.start = time_ns()
+        # Ensure we stop searching before our turn is over
+        self.start = time()
+        # Used to limit the ultimate search depth where heuristic scores are calculated
         self.depth = 0
-        move, _ = self.maximize(grid, alpha=float('-inf'), beta=float('inf'))
+        self.explored = 0
+
+        move, _ = self.maximize(grid, float('-inf'), float('inf'))
         return move
 
     def maximize(self, grid, alpha, beta):
         self.depth += 1
-        if self.depth > self.max_search_depth or not grid.canMove():
-            return None, heuristic(grid.map)
+        if self.depth > self.depth_searched:
+            self.depth_searched = self.depth
+        self.explored += 1
 
         if self.terminate(grid):
             return None, heuristic(grid.map)
 
         max_utility, max_child = float('-inf'), None
 
-        for child in get_children(grid):
+        for move, child in get_children(grid, turn='player'):
             _, utility = self.minimize(child, alpha, beta)
+            self.depth -= 1  # reset depth for next iteration
+
             if utility > max_utility:
-                max_child, max_utility = child, utility
+                max_child, max_utility = move, utility
+            if max_utility >= beta:
+                break  # tree prune
+            if max_utility > alpha:
+                alpha = max_utility
+            if self.clock_limit():
+                break
 
         return max_child, max_utility
 
     def minimize(self, grid, alpha, beta):
+        self.depth += 1
+        if self.depth > self.depth_searched:
+            self.depth_searched = self.depth
+        self.explored += 1
 
-        if self.terminate():
+        if self.terminate(grid):
             return None, heuristic(grid.map)
 
         min_utility, min_child = float('inf'), None
 
-        for child in get_children(grid):
+        for move, child in get_children(grid, turn='pc'):
             _, utility = self.maximize(child, alpha, beta)
+            self.depth -= 1  # reset depth for next iteration
             if utility < min_utility:
-                min_child, min_utility = child, utility
+                min_child, min_utility = move, utility
+            if min_utility <= alpha:
+                break  # tree prune
+            if min_utility < beta:
+                beta = min_utility
+            if self.clock_limit():
+                break
 
         return min_child, min_utility
 
     def terminate(self, grid):
         return any([
-            time_ns() - self.start >= self.time_limit,
-            self.depth > self.max_search_depth,
+            self.clock_limit(),
+            self.depth >= self.max_search_depth,
             not grid.canMove(),
         ])
+
+    def clock_limit(self):
+        return time() - self.start >= self.time_limit
