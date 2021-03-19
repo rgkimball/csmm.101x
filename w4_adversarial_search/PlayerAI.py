@@ -3,6 +3,16 @@ Submission for Project 2 of Columbia University's AI EdX course (Adversarial Sea
 
     author: @rgkimball
     date: 2/28/2021
+
+    Project Score: 100/100 points, ending max tile distribution of 500 runs:
+
+        128 	 1%
+        256	     2%
+        512	    12%
+        1024	33%
+        2048	48%
+        4096	 4%
+
 """
 from time import time
 from BaseAI import BaseAI
@@ -66,20 +76,19 @@ def _sum_power(grid_map, power=2):
     """
     Robert Xiao's sum power heuristic to measure raw board value.
 
-    :param grid_map:
-    :param power:
-    :return:
+    :param grid_map: list of rows, which are lists of tile values
+    :param power: float, the exponent by which each tile should be raised
+    :return: int
     """
     return sum([i ** power for row in grid_map for i in row])
-    # return sum([float(''.join(row)) ** power for row in grid_map])
 
 
 def _exponential_snake(grid_map):
     """
-    Ni, Hou & An Paper, snake monotonicity beats traditional measure
+    Nie, Hou & An Paper, snake monotonicity beats traditional measure
 
-    :param grid_map:
-    :return:
+    :param grid_map: list of rows, which are lists of tile values
+    :return: int, sum of the snake-weighted tile values
     """
     # Weight matrix
     c = [[15, 14, 13, 12], [8, 9, 10, 11], [7, 6, 5, 4], [0, 1, 2, 3]]
@@ -90,25 +99,12 @@ def heuristic(grid_map):
     """
     Combination of the underlying heuristic function scores.
 
+    Review commit history to see attempts at incorporating and weighting the above heuristics,
+    the lone snake monotonicity function was ultimately found to perform best.
+
     :param grid_map: list of rows, which are lists of tile values
     :return: int, final heuristic score
     """
-
-    # im = _monotonic(grid_map)
-    # os = _open_spaces(grid_map)
-    # sp = _sum_power(grid_map)
-    # pm = _potential_merges(grid_map)
-    #
-    # # Weights
-    # im *= 1/4
-    # sp *= 1/6
-    # os *= 1/100
-    # pm *= 2
-
-    # print('Heuristic score sum  (os+pm-im-sp): ', os, pm, im, sp, os + pm - im - sp)
-    # print('Heuristic score prod (os*pm*im*sp): ', os, pm, im, sp, os * pm * im * sp)
-    # return os + pm - im - sp
-    # return os * pm * im * sp
     return _exponential_snake(grid_map)
 
 
@@ -136,7 +132,6 @@ def get_children(grid, turn='player'):
                 this = grid.clone()
                 this.setCellValue(space, value)
                 nodes.append((space, this))
-
     return nodes
 
 
@@ -144,7 +139,6 @@ class PlayerAI(BaseAI):
 
     depth_searched = 0
     time_limit = 0.24  # seconds
-    prob_2 = 0.9  # % chance that a new tile is a 2, instead of a 4
     order_preference = (0, 2, 1, 3)
 
     def getMove(self, grid):
@@ -154,8 +148,8 @@ class PlayerAI(BaseAI):
         self.depth = 0
         self.explored = 0
 
+        # Initiate Minimax search algorithm with alpha-beta pruning
         move, _ = self.maximize(grid, float('-inf'), float('inf'))
-        print(move)
         return move
 
     def maximize(self, grid, alpha, beta):
@@ -210,6 +204,15 @@ class PlayerAI(BaseAI):
         return min_child, min_utility
 
     def terminate(self, grid):
+        """
+        Termination conditions are:
+            - If our search has exceeded the time limit
+            - If we've reached the bottom of our search tree
+            - If there are no available moves for the grid (this branch has resulted in a loss)
+
+        :param grid: Grid object
+        :return: boolean, whether any of the above termination conditions are breached.
+        """
         return any([
             self.clock_limit(),
             self.depth >= self.max_search_depth(grid),
@@ -217,6 +220,11 @@ class PlayerAI(BaseAI):
         ])
 
     def clock_limit(self):
+        """
+        Ensure we terminate our tree search in time to avoid triggering the turn constraint.
+
+        :return: time elapsed
+        """
         return time() - self.start >= self.time_limit
 
     def max_search_depth(self, grid):
