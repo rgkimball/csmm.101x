@@ -8,17 +8,19 @@ from time import time
 from BaseAI import BaseAI
 
 
-def _monotonic(grid_map, p=1.5):
+def _monotonic(grid_map, p=1.3):
     """
     Reward monotonic rows & columns, increasing exponentially with the rank.
 
     :param grid_map: list of rows, which are lists of tile values
     :return: int
     """
+    max_tile = max(v for r in grid_map for v in r)
     horizontal = [i ** p - j ** p if i > j else j ** p - i ** p for r in grid_map for i, j in zip(r, r[1:])]
     transpose = [[grid_map[i][j] for i in range(4)] for j in range(4)]
     vertical = [i ** p - j ** p if i > j else j ** p - i ** p for r in transpose for i, j in zip(r, r[1:])]
-    return sum(horizontal) + sum(vertical)
+    corner_bonus = max_tile if max_tile == grid_map[0][0] else 1
+    return sum(horizontal) * corner_bonus + sum(vertical) / 2
 
 
 def _open_spaces(grid_map):
@@ -60,7 +62,7 @@ def _potential_merges(grid_map):
     return rows + columns
 
 
-def _sum_power(grid_map, power=3.5):
+def _sum_power(grid_map, power=2):
     """
     Robert Xiao's sum power heuristic to measure raw board value.
 
@@ -86,13 +88,14 @@ def heuristic(grid_map):
     pm = _potential_merges(grid_map)
 
     # Weights
-    im **= 0.5
-    sp **= 0.5
-    os *= 2000
-    pm *= 1000
+    im *= 1/4
+    sp *= 1/6
+    os *= 1/100
+    pm *= 2
 
     # print('Heuristic score (os+pm-im-sp): ', os, pm, im, sp, os + pm - im - sp)
-    return os + pm - im - sp
+    # return os + pm - im - sp
+    return os * pm * im * sp
 
 
 def get_children(grid, turn='player'):
@@ -125,9 +128,9 @@ def get_children(grid, turn='player'):
 
 class PlayerAI(BaseAI):
 
-    max_search_depth = 15
+    max_search_depth = 600
     depth_searched = 0
-    time_limit = 0.19  # seconds
+    time_limit = 0.24  # seconds
     prob_2 = 0.9  # % chance that a new tile is a 2, instead of a 4
     order_preference = (0, 2, 1, 3)
 
