@@ -7,8 +7,8 @@ Submission for Project 2 of Columbia University's AI EdX course (Adversarial Sea
     Project Score: 100/100 points, ending max tile distribution of 500 runs:
 
         128 	 1%
-        256	     2%
-        512	    12%
+        256	 2%
+        512	12%
         1024	33%
         2048	48%
         4096	 4%

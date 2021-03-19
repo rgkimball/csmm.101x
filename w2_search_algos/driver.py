@@ -350,37 +350,6 @@ def main():
         raise ValueError("Enter a valid code! Algorithm should be one of {}".format(', '.join(algos.keys())))
 
 
-def test_algos(file_name):
-    import pandas as pd
-    global MEM_USAGE
-    all_stats = []
-    with open(file_name, 'r') as f:
-        grids = [tuple(map(int, x.replace('\n', '').split(','))) for x in f.readlines()]
-    for i, grid in enumerate(grids):
-        print(i, grid)
-        # Initialize grid
-        this = PuzzleState(tuple(grid), int(math.sqrt(len(grid))))
-        combined = {'i': i, 'grid': ','.join([str(i) for i in grid])}
-        # Run BFS Algo
-        bfs = bfs_search(this)
-        if bfs is not None:
-            bfs['path_to_goal'] = ''.join(s[0] for s in bfs['path_to_goal'])
-            bfs = {f'bfs_{k}': v for k, v in bfs.items()}
-            combined.update(bfs)
-        MEM_USAGE = {}
-        # Run DFS Algo
-        dfs = dfs_search(this)
-        if dfs is not None:
-            del dfs['path_to_goal']
-            dfs = {f'dfs_{k}': v for k, v in dfs.items()}
-            combined.update(dfs)
-        MEM_USAGE = {}
-        all_stats.append(combined)
-
-    df = pd.DataFrame. from_records(all_stats)
-    df.to_csv('all_stats.csv', index=False)
-
-
 if __name__ == '__main__':
     main()
-    # test_algos('solvable_grids.txt')
+
