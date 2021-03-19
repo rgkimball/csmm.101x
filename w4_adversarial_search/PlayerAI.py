@@ -74,6 +74,18 @@ def _sum_power(grid_map, power=2):
     # return sum([float(''.join(row)) ** power for row in grid_map])
 
 
+def _exponential_snake(grid_map):
+    """
+    Ni, Hou & An Paper, snake monotonicity beats traditional measure
+
+    :param grid_map:
+    :return:
+    """
+    # Weight matrix
+    c = [[15, 14, 13, 12], [8, 9, 10, 11], [7, 6, 5, 4], [0, 1, 2, 3]]
+    return sum((4 ** c[i][j]) * grid_map[i][j] for i in range(4) for j in range(4))
+
+
 def heuristic(grid_map):
     """
     Combination of the underlying heuristic function scores.
@@ -82,20 +94,22 @@ def heuristic(grid_map):
     :return: int, final heuristic score
     """
 
-    im = _monotonic(grid_map)
-    os = _open_spaces(grid_map)
-    sp = _sum_power(grid_map)
-    pm = _potential_merges(grid_map)
+    # im = _monotonic(grid_map)
+    # os = _open_spaces(grid_map)
+    # sp = _sum_power(grid_map)
+    # pm = _potential_merges(grid_map)
+    #
+    # # Weights
+    # im *= 1/4
+    # sp *= 1/6
+    # os *= 1/100
+    # pm *= 2
 
-    # Weights
-    im *= 1/4
-    sp *= 1/6
-    os *= 1/100
-    pm *= 2
-
-    # print('Heuristic score (os+pm-im-sp): ', os, pm, im, sp, os + pm - im - sp)
+    # print('Heuristic score sum  (os+pm-im-sp): ', os, pm, im, sp, os + pm - im - sp)
+    # print('Heuristic score prod (os*pm*im*sp): ', os, pm, im, sp, os * pm * im * sp)
     # return os + pm - im - sp
-    return os * pm * im * sp
+    # return os * pm * im * sp
+    return _exponential_snake(grid_map)
 
 
 def get_children(grid, turn='player'):
@@ -128,7 +142,6 @@ def get_children(grid, turn='player'):
 
 class PlayerAI(BaseAI):
 
-    max_search_depth = 600
     depth_searched = 0
     time_limit = 0.24  # seconds
     prob_2 = 0.9  # % chance that a new tile is a 2, instead of a 4
@@ -142,6 +155,7 @@ class PlayerAI(BaseAI):
         self.explored = 0
 
         move, _ = self.maximize(grid, float('-inf'), float('inf'))
+        print(move)
         return move
 
     def maximize(self, grid, alpha, beta):
@@ -198,9 +212,19 @@ class PlayerAI(BaseAI):
     def terminate(self, grid):
         return any([
             self.clock_limit(),
-            self.depth >= self.max_search_depth,
+            self.depth >= self.max_search_depth(grid),
             not grid.canMove(),
         ])
 
     def clock_limit(self):
         return time() - self.start >= self.time_limit
+
+    def max_search_depth(self, grid):
+        """
+        Dynamically increase the search depth if we have more open spaces.
+
+        :param grid: Grid object (from which we'll retrieve the map to count open spaces)
+        :return: integer
+        """
+        os = _open_spaces(grid.map)
+        return int(-os/3 + 10)
