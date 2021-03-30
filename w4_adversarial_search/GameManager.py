@@ -47,10 +47,10 @@ class GameManager:
         if currTime - self.prevTime > timeLimit + allowance:
             self.over = True
         else:
-            while time.clock() - self.prevTime < timeLimit + allowance:
+            while time.time() - self.prevTime < timeLimit + allowance:
                 pass
 
-            self.prevTime = time.clock()
+            self.prevTime = time.time()
 
     def start(self):
         for i in range(self.initTiles):
@@ -62,7 +62,7 @@ class GameManager:
         turn = PLAYER_TURN
         maxTile = 0
 
-        self.prevTime = time.clock()
+        self.prevTime = time.time()
 
         while not self.isGameOver() and not self.over:
             # Copy to Ensure AI Cannot Change the Real Grid to Cheat
@@ -103,7 +103,7 @@ class GameManager:
                 self.displayer.display(self.grid)
 
             # Exceeding the Time Allotted for Any Turn Terminates the Game
-            self.updateAlarm(time.clock())
+            self.updateAlarm(time.time())
 
             turn = 1 - turn
         print(maxTile)
