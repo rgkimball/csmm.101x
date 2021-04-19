@@ -8,9 +8,10 @@ Submission for Project 4 of Columbia University's AI EdX course (Constraint Sati
 import numpy as np
 from sys import argv
 from itertools import product
+from collections import OrderedDict
+from datetime import datetime as dt
 
-
-class SudokuBoard(dict):
+class SudokuBoard(OrderedDict):
 
     columns = list(map(str, range(1, 10)))
     rows = list('ABCDEFGHI')
@@ -58,12 +59,12 @@ class SudokuBoard(dict):
             rw.append(self.__all_unique__(this_row))
         for c, r in self.squares:
             this_square = {k: self[k] for k in map(lambda x: x[0] + x[1], list(product(c, r)))}
-            sq.append(self.__all_unique__(this_square))
+            sq.append(self.__all_unique__(list(this_square.values())))
         return all(cl + rw + sq)
 
     @staticmethod
     def __all_unique__(lst):
-        return len(set(lst)) == len(lst)
+        return len(set(lst)) == len(lst) and 0 not in lst
 
     def cell_square(self, key):
         row, col = list(key)
@@ -86,6 +87,34 @@ class SudokuBoard(dict):
         square = [k for k in self.cell_square(key).keys() if k != key]
         return sorted(set(col + row + square))
 
+    def legal_value(self, key, assignment):
+        """
+        Returns the valid options for assignment within a particular cell. If the cell is already we assigned we assume
+        it is assigned correctly and return its value, otherwise we compare it to neighboring cells via cell_neighbors()
+
+        :param key: cell reference as a str, like 'A1'
+        :param assignment: int, the intended value we want to assign to the cell referenced by key
+        :return: set of possible values for assignment, like (3, 5)
+        """
+        for cell in self.cell_neighbors(key):
+            if len(self.open[cell]) == 1 and assignment == self[cell]:
+                return False
+            else:
+                if assignment in self.open[cell]:
+                    self.open[cell].remove(assignment)
+                    if len(self.open[cell]) == 0:
+                        return False
+        return True
+
+        # if self[key] != 0:
+        #     return [self[key]]
+        # else:
+        #     neighbor_values = set(self[k] for k in self.cell_neighbors(key))
+        #     return set(self.domain) - neighbor_values
+
+    def sort_min_remaining(self):
+        return {k: v for k, v in sorted(self.open.items(), key=lambda item: len(item[1])) if len(v) > 1}
+
 
 class Sudoku:
 
@@ -103,14 +132,25 @@ class Sudoku:
         return self.board[item]
 
     def solve(self):
+        if self.board.solved:
+            return str(self) + " NONE"
         self.ac3()
         if self.board.solved:
             return str(self) + " AC3"
 
-        self.bts()
+        # If the board remains unsolved, we need to run backtracking search to find the resolve cells.
+        self.board = bts(self.board)
         return str(self) + " BTS"
 
     def revise(self, x_i, x_j):
+        """
+        Associate function of AC-3 to check whether any allowable values of a cell are illegal based on the value of a
+        specific neighbor cell.
+
+        :param x_i: cell reference for target cell as a str, like 'A1'
+        :param x_j: cell reference for neighbor cell as a str, like 'A2'
+        :return: True if any values were found to violate the condition, False if no contradictions are found.
+        """
         revised = False
         for value in self.board.open.get(x_i, [self.board[x_i]]):
             # Check to see whether any potential values for x_i violate any constraints for x_j
@@ -120,6 +160,17 @@ class Sudoku:
         return revised
 
     def ac3(self):
+        """
+        Runs the Arc-Consistency (AC-3) algorithm to quickly resolve simple puzzles and narrow the search space before more
+        advanced algorithms to take over.
+
+        Uses class parameters as inputs to form CSP:
+         - Domain (D): self.board.domain/self.board.open
+         - Variables (X): keys in self.board
+         - Constraints (C): enforced by self.revise(), where neighbor cells must not have the same value.
+
+        :return: True when the algorithm has terminated
+        """
         queue = [(x_i, x_j) for x_i in self.board.keys() for x_j in self.board.cell_neighbors(x_i)]
         while queue:
             ki, kj = queue.pop()
@@ -133,14 +184,36 @@ class Sudoku:
         return True
 
     def fill_resolved(self):
+        """
+        Helper function to populate the board keys as we resolve values; iterates through the values in SudokuBoard.open
+        and transfers the value to keys if there is only one remaining legal value for that cell.
+
+        :return: N/A
+        """
         for key, value in self.board.open.items():
             if len(value) == 1:
                 self.board[key] = value[0]
 
 
+def bts(board: SudokuBoard):
+    if board.solved:
+        return board
+
+    unassigned = board.sort_min_remaining()
+    key = list(unassigned)[0]
+    for value in unassigned[key]:
+        new = SudokuBoard(str(board))
+        if new.legal_value(key, value):
+            new[key] = value
+            # Recursively assign new values if we've settled on a valid one until it breaks:
+            new = bts(new)
+            if getattr(new, 'solved', False):
+                return new
+
+
 def write_solution(string, fnam='output.txt'):
     with open(fnam, 'a+') as fo:
-        fo.write(string)
+        fo.write(string + '\n')
 
 
 if __name__ == '__main__':
@@ -152,8 +225,10 @@ if __name__ == '__main__':
         solution = game.solve()
         write_solution(solution)
     else:
-        boards = np.loadtxt(argument, delimiter=' ')
+        boards = np.loadtxt(argument, delimiter=' ', dtype=str)
         for b in boards:
+            start = dt.now()
             game = Sudoku(b)
             solution = game.solve()
             write_solution(solution, 'multi_output.txt')
+            print(solution, dt.now() - start)
