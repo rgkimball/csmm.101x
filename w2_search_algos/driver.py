@@ -5,11 +5,13 @@ Submission for Project 1 of Columbia University's AI EdX course (8-puzzle).
     date: 2/9/2021
 """
 
+import os
 import sys
 import math
 import time
 import heapq
 from collections import deque
+from multiprocessing import Pool, cpu_count
 
 
 class PuzzleState(object):
@@ -167,6 +169,7 @@ def write_output(
 
     :return:
     """
+    global MEM_USAGE
     this, depth, actions = state, 1, []
     while this.parent is not None:
         actions.append(this.action)
@@ -189,7 +192,7 @@ def write_output(
         fo.write(contents)
     print(contents)
     print(f'Output file saved to {fnam}')
-
+    MEM_USAGE = {}
     return output
 
 
@@ -292,7 +295,7 @@ def calculate_total_cost(state: PuzzleState):
     :return: total cost of the state
     """
     x = sum(calculate_manhattan_dist(i, v, state.dimension) for i, v in enumerate(state.config))
-    return x
+    return x + state.cost
 
 
 def calculate_manhattan_dist(idx, value, n):
@@ -321,6 +324,36 @@ def test_goal(puzzle_state: PuzzleState):
     return all(a < b for a, b in zip(arr, arr[1:]))
 
 
+def format_game(raw):
+    """
+    Utility function to build a PuzzleState object from a raw input string.
+
+    :param raw: str containing tile values, like '1,4,2,7,5,8,3,0,6'
+    :return: PuzzleState object
+    """
+    split = raw.replace('\n', '').split(",")
+    tiles = tuple(map(int, split))
+    size = int(math.sqrt(len(tiles)))
+    return PuzzleState(tiles, size)
+
+
+def pool_run(game, run, algo, destination):
+    game = game.replace('\n', '')
+    output = run(format_game(game))
+    output.update({
+        'algo': algo,
+        'path_to_goal': ''.join([v[0] for v in output['path_to_goal']][:32]),
+        'starting_grid': game.replace(',', ''),
+    })
+    if not os.path.isfile(destination):
+        with open(destination, 'a+') as fo:
+            fo.write(','.join(map(str, output.keys())) + '\n')
+            fo.write(','.join(map(str, output.values())) + '\n')
+    else:
+        with open(destination, 'a+') as fo:
+            fo.write(','.join(map(str, output.values())) + '\n')
+
+
 def main():
     """
     Main Function that reads in Input and Runs corresponding Algorithm
@@ -328,28 +361,41 @@ def main():
     :return:
     """
 
-    if len(sys.argv) < 2:
-        raise ValueError('Invalid command arguments given, first should be an algo code followed by the init state.')
-
-    sm = sys.argv[1].lower()
-    begin_state = sys.argv[2].split(",")
-    begin_state = tuple(map(int, begin_state))
-    size = int(math.sqrt(len(begin_state)))
-    hard_state = PuzzleState(begin_state, size)
-
     algos = {
         'bfs': bfs_search,
         'dfs': dfs_search,
         'ast': a_star_search,
     }
 
-    # PEP 634 is finally here! No more dictionary switch cases!
-    if sm in algos.keys():
-        algos[sm](hard_state)
+    # Arguments can either specify a single file, from which we can test all puzzles iteratively, or a pair of values
+    # indicating the algorithm to use and the puzzle to solve, like: driver.py bfs 7,2,4,5,0,6,8,3,1
+    if len(sys.argv) < 3:
+        file_name = sys.argv[1]
+        direc = os.path.abspath(os.getcwd())
+        path = os.path.join(direc, file_name)
+        solved_path = os.path.join(direc, file_name.replace('.', '_solved.', 1))
+
+        if os.path.isfile(path):
+            with open(path, 'r') as fo:
+                games = fo.readlines()
+            pool = Pool(processes=cpu_count())
+            queue = []
+            for algo, run in algos.items():
+                for game in games:
+                    queue.append((game, run, algo, solved_path))
+            pool.starmap(pool_run, queue)
+        else:
+            raise ValueError('Invalid arguments, should be an individual game or file path containing multiple games.')
     else:
-        raise ValueError("Enter a valid code! Algorithm should be one of {}".format(', '.join(algos.keys())))
+        sm = sys.argv[1].lower()
+        game = format_game(sys.argv[2])
+
+        # PEP 634 is finally here! No more dictionary switch cases!
+        if sm in algos.keys():
+            algos[sm](game)
+        else:
+            raise ValueError("Enter a valid code! Algorithm should be one of {}".format(', '.join(algos.keys())))
 
 
 if __name__ == '__main__':
     main()
-
