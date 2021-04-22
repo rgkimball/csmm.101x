@@ -7,11 +7,37 @@ Submission for Project 4 of Columbia University's AI EdX course (Constraint Sati
 
 import numpy as np
 from sys import argv
+from copy import deepcopy
 from itertools import product
 from collections import OrderedDict
 from datetime import datetime as dt
 
+
 class SudokuBoard(OrderedDict):
+    """
+    A representation of a Sudoku game board, where cells are stored with letters A-I along the rows and numbers 1-9
+    to enumerate the columns. This class is therefore limited to 9x9 games. New games can be initiated with a string of
+    81 digits, i.e.:
+    >>> SudokuBoard('000005000007060430406008205002000000008074900601800000003500000060001020100327090')
+
+    We can determine whether or not a particular board is solved using the solved property. This is implemented as a
+    property since we need to calculate its value each time we make a change to the cells while solving:
+    >>> SudokuBoard('329745618857162439416938275742619853538274961691853742273596184965481327184327596').solved
+    >> True
+
+    Several helper methods assist with the search for solutions:
+
+    - cell_neighbors: can give us a list of all contingent cells given a particular cell's key:
+        >>> SudokuBoard('...').cell_neighbors('E1')
+        >> ['A1','B1','C1','D1','D2','D3','E2','E3','E4','E5','E6','E7','E8','E9','F1','F2','F3','G1','H1','I1']
+    - legal_value: can tell us whether a particular value is allowed for a specific cell given its contingent cells:
+        >>> SudokuBoard('...').legal_value('E1', 5)
+        >> True or False
+    - sort_min_remaining: a heuristic function used in backtracking search which sorts all of the unassigned cells and
+                          sorts them according to how many legal values remain - we assign the most constrained first.
+    - fill_resolved: this is used to preserve the keys while we're trying different values, and the algorithms must
+                     populate all of the cells that only have one legal value at the end of their respective iterations.
+    """
 
     columns = list(map(str, range(1, 10)))
     rows = list('ABCDEFGHI')
@@ -106,17 +132,49 @@ class SudokuBoard(OrderedDict):
                         return False
         return True
 
-        # if self[key] != 0:
-        #     return [self[key]]
-        # else:
-        #     neighbor_values = set(self[k] for k in self.cell_neighbors(key))
-        #     return set(self.domain) - neighbor_values
-
     def sort_min_remaining(self):
+        """
+        Returns a dictionary of all open cells sorted by the cells with the fewest remaining legal values.
+        Used in the process of backtracking search to prioritize highly-constrained cell assignments.
+
+        :return: dict
+        """
         return {k: v for k, v in sorted(self.open.items(), key=lambda item: len(item[1])) if len(v) > 1}
+
+    def fill_resolved(self):
+        """
+        Helper function to populate the board keys as we resolve values; iterates through the values in SudokuBoard.open
+        and transfers the value to keys if there is only one remaining legal value for that cell.
+
+        :return: N/A
+        """
+        for key, value in self.open.items():
+            if len(value) == 1:
+                self[key] = value[0]
+
+    def copy(self):
+        """
+        Permits us to attempt multiple values in cells without tampering with the original internal data structures.
+
+        :return: new SudokuBoard object independent from the original.
+        """
+        new = SudokuBoard(str(self))
+        new.open = deepcopy(self.open)
+        return new
 
 
 class Sudoku:
+    """
+    A wrapper class for the Sudoku game solver. Most of the logic is implemented in SudokuBoard, but the game itself
+    is initiated and managed here. We preserve both the initial state and the current state while we're solving the
+    board.
+
+    Using the solve() method, we first attempt to find missing values using arc-consistency (AC-3), and more complicated
+    puzzles (i.e. most of them) are then passed along to the backtracking search to systematically eliminate values for
+    cells that violate selections for its neighboring cells (vertically, horizontally, or within its square).
+
+    This class exposes cell values from its underlying SudokuBoard object, stored in Sudoku.board.
+    """
 
     def __init__(self, board):
         self.board = SudokuBoard(board)
@@ -134,84 +192,99 @@ class Sudoku:
     def solve(self):
         if self.board.solved:
             return str(self) + " NONE"
-        self.ac3()
+        ac3(self.board)
         if self.board.solved:
             return str(self) + " AC3"
 
-        # If the board remains unsolved, we need to run backtracking search to find the resolve cells.
-        self.board = bts(self.board)
+        # If the board remains unsolved, we need to run backtracking search to find the remaining cells.
+        self.board = bts(self.board.copy())
         return str(self) + " BTS"
 
-    def revise(self, x_i, x_j):
-        """
-        Associate function of AC-3 to check whether any allowable values of a cell are illegal based on the value of a
-        specific neighbor cell.
 
-        :param x_i: cell reference for target cell as a str, like 'A1'
-        :param x_j: cell reference for neighbor cell as a str, like 'A2'
-        :return: True if any values were found to violate the condition, False if no contradictions are found.
-        """
-        revised = False
-        for value in self.board.open.get(x_i, [self.board[x_i]]):
-            # Check to see whether any potential values for x_i violate any constraints for x_j
-            if all(not value != y for y in self.board.open[x_j]):
-                self.board.open[x_i].remove(value)
-                revised = True
-        return revised
+def revise(board: SudokuBoard, x_i, x_j):
+    """
+    Associate function of AC-3 to check whether any allowable values of a cell are illegal based on the value of a
+    specific neighbor cell.
 
-    def ac3(self):
-        """
-        Runs the Arc-Consistency (AC-3) algorithm to quickly resolve simple puzzles and narrow the search space before more
-        advanced algorithms to take over.
-
-        Uses class parameters as inputs to form CSP:
-         - Domain (D): self.board.domain/self.board.open
-         - Variables (X): keys in self.board
-         - Constraints (C): enforced by self.revise(), where neighbor cells must not have the same value.
-
-        :return: True when the algorithm has terminated
-        """
-        queue = [(x_i, x_j) for x_i in self.board.keys() for x_j in self.board.cell_neighbors(x_i)]
-        while queue:
-            ki, kj = queue.pop()
-            if self.revise(ki, kj):
-                if not len(self.board.open[ki]):
-                    return False
-                for x in self.board.cell_neighbors(ki):
-                    if x != ki:
-                        queue.append((x, ki))
-            self.fill_resolved()
-        return True
-
-    def fill_resolved(self):
-        """
-        Helper function to populate the board keys as we resolve values; iterates through the values in SudokuBoard.open
-        and transfers the value to keys if there is only one remaining legal value for that cell.
-
-        :return: N/A
-        """
-        for key, value in self.board.open.items():
-            if len(value) == 1:
-                self.board[key] = value[0]
+    :param board: A SudokuBoard object
+    :param x_i: cell reference for target cell as a str, like 'A1'
+    :param x_j: cell reference for neighbor cell as a str, like 'A2'
+    :return: True if any values were found to violate the condition, False if no contradictions are found.
+    """
+    revised = False
+    for value in board.open.get(x_i, [board[x_i]]):
+        # Check to see whether any potential values for x_i violate any constraints for x_j
+        if all(not value != y for y in board.open[x_j]):
+            board.open[x_i].remove(value)
+            revised = True
+    return revised
 
 
-def bts(board: SudokuBoard):
+def ac3(board: SudokuBoard):
+    """
+    Runs the Arc-Consistency (AC-3) algorithm to quickly resolve simple puzzles and narrow the search space before more
+    advanced algorithms to take over.
+
+    Uses class parameters as inputs to form CSP:
+     - Domain (D): self.board.domain/self.board.open
+     - Variables (X): keys in self.board
+     - Constraints (C): enforced by self.revise(), where neighbor cells must not have the same value.
+
+    :param board: A SudokuBoard object
+    :return: True when the algorithm has terminated
+    """
+    queue = [(x_i, x_j) for x_i in board.keys() for x_j in board.cell_neighbors(x_i)]
+    while queue:
+        ki, kj = queue.pop()
+        if revise(board, ki, kj):
+            if not len(board.open[ki]):
+                return False
+            for x in board.cell_neighbors(ki):
+                if x != ki:
+                    queue.append((x, ki))
+        board.fill_resolved()
+    return True
+
+
+def bts(board: SudokuBoard, debug=False):
+    """
+    Implements backtracking search algorithm to solve tougher puzzles.
+
+    :param board: A SudokuBoard object
+    :param debug: boolean, prints extra info to the console if needed to trace the path of the algo.
+    :return: a solved SudokuBoard object if a solution is found, otherwise the algorithm will run indefinitely.
+    """
+    board.depth += 1
+    if not ac3(board):
+        return False
     if board.solved:
         return board
 
     unassigned = board.sort_min_remaining()
     key = list(unassigned)[0]
+
+    if debug:
+        test = {k: v for k, v in board.open.items() if len(v) == 1}
+        print(len(test) * '.', 81 - len(test), 'left', key, unassigned[key])
+
     for value in unassigned[key]:
-        new = SudokuBoard(str(board))
+        new = board.copy()
         if new.legal_value(key, value):
-            new[key] = value
+            new[key], new.open[key] = value, [value]
             # Recursively assign new values if we've settled on a valid one until it breaks:
             new = bts(new)
-            if getattr(new, 'solved', False):
+            if new:
                 return new
 
 
 def write_solution(string, fnam='output.txt'):
+    """
+    Simple helper to create or append to a file with new lines to the specified location.
+
+    :param string: str, line to be added to the file
+    :param fnam: name of the file as a str
+    :return: N/A
+    """
     with open(fnam, 'a+') as fo:
         fo.write(string + '\n')
 
@@ -221,14 +294,16 @@ if __name__ == '__main__':
     argument = argv[1]
 
     if len(argument) == 81 and argument.isdecimal():
+        start = dt.now()
         game = Sudoku(argument)
         solution = game.solve()
         write_solution(solution)
+        print(argument, solution, dt.now() - start)
     else:
         boards = np.loadtxt(argument, delimiter=' ', dtype=str)
-        for b in boards:
+        for i, b in enumerate(boards):
             start = dt.now()
             game = Sudoku(b)
             solution = game.solve()
             write_solution(solution, 'multi_output.txt')
-            print(solution, dt.now() - start)
+            print(i, b, solution, dt.now() - start)
