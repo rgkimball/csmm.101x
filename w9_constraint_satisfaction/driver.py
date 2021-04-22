@@ -254,7 +254,6 @@ def bts(board: SudokuBoard, debug=False):
     :param debug: boolean, prints extra info to the console if needed to trace the path of the algo.
     :return: a solved SudokuBoard object if a solution is found, otherwise the algorithm will run indefinitely.
     """
-    board.depth += 1
     if not ac3(board):
         return False
     if board.solved:
