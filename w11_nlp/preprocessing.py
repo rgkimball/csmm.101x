@@ -37,4 +37,4 @@ def preprocess(split='train'):
     df.reset_index(inplace=True, drop=True)
 
     log.info('Saving pre-processed dataframe.')
-    df.to_csv(cfg[env][f'{split}_combined'], index=True)
+    df.to_csv(cfg[env][f'{split}_combined'], index=True, encoding='iso-8859-1')
