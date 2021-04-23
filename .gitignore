@@ -31,4 +31,5 @@ __pycache__/
 
 # Project specific
 Readings/
-*/data/raw
+*/data/raw/**
+*/data/working/**
